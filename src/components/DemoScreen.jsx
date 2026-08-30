@@ -3,6 +3,14 @@ import { generatePost } from "../lib/generatePostClient";
 import { describeResult } from "../lib/explain";
 import styles from "../styles/Demo.module.css";
 
+// Weighted toward ContentBot so repeatedly tapping "Generate another" is
+// likely to surface both outcomes, not just PostGuard's near-always-approved
+// posts. PostGuard still appears often enough to read as "usually approved"
+// rather than never showing up.
+function pickAgentId() {
+  return Math.random() < 0.35 ? "postguard" : "contentbot";
+}
+
 export function DemoScreen({ policyEngine, auditStore, onNavigate }) {
   const [stage, setStage] = useState("drafting"); // drafting -> checking -> result -> error
   const [post, setPost] = useState(null);
@@ -17,7 +25,7 @@ export function DemoScreen({ policyEngine, auditStore, onNavigate }) {
     setResult(null);
     setError(null);
 
-    generatePost("postguard")
+    generatePost(pickAgentId())
       .then((generated) => {
         if (id !== runId.current) return; // a newer run superseded this one
         setPost(generated);
@@ -62,7 +70,7 @@ export function DemoScreen({ policyEngine, auditStore, onNavigate }) {
   return (
     <div className="page">
       <p className={styles.eyebrow}>
-        {stage === "drafting" ? "PostGuard AI is drafting…" : "AI wants to post this"}
+        {stage === "drafting" ? "An AI agent is drafting…" : "AI wants to post this"}
       </p>
 
       {post && (

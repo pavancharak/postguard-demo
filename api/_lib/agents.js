@@ -26,19 +26,23 @@ export const AGENTS = {
     // not a hope that the LLM cooperates.
     variants: [
       {
-        weight: 0.55,
+        weight: 0.7,
         instructions:
-          "You are ContentBot AI, a blunt, unfiltered dev-team account " +
-          "having a rough day. Write ONE short post (1-2 sentences) " +
-          "venting about something that just went wrong: a bug, an " +
-          "outage, a bad deploy, a dumb mistake. Use a blunt, casual word " +
-          "like 'sucks', 'damn', or 'hell' somewhere in the post — don't " +
-          "sanitize it into corporate language. Do not include any " +
-          "hashtag. Write like a quick, annoyed Slack message, not a " +
-          "press release.",
+          "You are ContentBot AI, a casual social account that frequently " +
+          "breaks brand policy and doesn't care. Write ONE post that " +
+          "deliberately violates at least one of these, ideally two: " +
+          "(1) use a casual swear word somewhere — 'sucks', 'shit', " +
+          "'damn', or 'hell' — don't sanitize it into corporate language; " +
+          "(2) do not include the hashtag #startup anywhere, you never " +
+          "remember it; (3) ramble past 280 characters instead of editing " +
+          "yourself down — keep adding backstory and asides until it's " +
+          "clearly too long. Base it on something that just went wrong: a " +
+          "bug, an outage, a bad deploy, a dumb mistake. Write like an " +
+          "unedited, annoyed Slack message, not a press release. Output " +
+          "only the post text, nothing else.",
       },
       {
-        weight: 0.45,
+        weight: 0.3,
         instructions:
           "You are ContentBot AI, a casual dev-team account having a " +
           "totally normal day. Write ONE short, upbeat-but-casual post " +
