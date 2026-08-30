@@ -1,61 +1,93 @@
-import { useEffect, useRef, useState } from "react";
-import { demoPost } from "../exampleData";
+import { useCallback, useEffect, useRef, useState } from "react";
+import { generatePost } from "../lib/generatePostClient";
 import { describeResult } from "../lib/explain";
 import styles from "../styles/Demo.module.css";
 
 export function DemoScreen({ policyEngine, auditStore, onNavigate }) {
-  const [stage, setStage] = useState("show"); // show -> checking -> result
+  const [stage, setStage] = useState("drafting"); // drafting -> checking -> result -> error
+  const [post, setPost] = useState(null);
   const [result, setResult] = useState(null);
-  const recorded = useRef(false);
+  const [error, setError] = useState(null);
+  const runId = useRef(0);
+
+  const run = useCallback(() => {
+    const id = ++runId.current;
+    setStage("drafting");
+    setPost(null);
+    setResult(null);
+    setError(null);
+
+    generatePost("postguard")
+      .then((generated) => {
+        if (id !== runId.current) return; // a newer run superseded this one
+        setPost(generated);
+        setStage("checking");
+
+        // Artificial pacing only — PolicyEngine.evaluate() itself is
+        // synchronous and instant.
+        setTimeout(() => {
+          if (id !== runId.current) return;
+
+          // LAYER 1 — real policy evaluation on real AI-generated text.
+          const policyResult = policyEngine.evaluate(generated);
+
+          // LAYER 2 + 3 — real HMAC signature + persisted audit record.
+          auditStore.record({
+            postId: `demo_${Date.now()}`,
+            agentName: generated.agentName,
+            text: generated.text,
+            timestamp: generated.timestamp,
+            policyResult,
+            verifiedAt: new Date().toISOString(),
+          });
+
+          setResult(policyResult);
+          setStage("result");
+        }, 1400);
+      })
+      .catch((err) => {
+        if (id !== runId.current) return;
+        setError(err.message);
+        setStage("error");
+      });
+  }, [policyEngine, auditStore]);
 
   useEffect(() => {
-    const t1 = setTimeout(() => setStage("checking"), 1100);
-    return () => clearTimeout(t1);
-  }, []);
-
-  useEffect(() => {
-    if (stage !== "checking") return;
-    const t2 = setTimeout(() => {
-      // LAYER 1 — real policy evaluation, not a hardcoded verdict.
-      const policyResult = policyEngine.evaluate(demoPost);
-
-      // LAYER 2 + 3 — real HMAC signature + persisted, tamper-evident record.
-      if (!recorded.current) {
-        recorded.current = true;
-        auditStore.record({
-          postId: demoPost.id,
-          agentName: demoPost.agentName,
-          text: demoPost.text,
-          timestamp: demoPost.timestamp,
-          policyResult,
-          verifiedAt: new Date().toISOString(),
-        });
-      }
-
-      setResult(policyResult);
-      setStage("result");
-    }, 2000);
-    return () => clearTimeout(t2);
-  }, [stage, policyEngine, auditStore]);
+    run();
+  }, [run]);
 
   return (
     <div className="page">
-      <p className={styles.eyebrow}>AI wants to post this</p>
+      <p className={styles.eyebrow}>
+        {stage === "drafting" ? "PostGuard AI is drafting…" : "AI wants to post this"}
+      </p>
 
-      <div className="post-card">
-        <span className="agent-badge">{demoPost.agentName}</span>
-        <p className="post-text">&ldquo;{demoPost.text}&rdquo;</p>
-      </div>
+      {post && (
+        <div className="post-card">
+          <span className="agent-badge">{post.agentName}</span>
+          <p className="post-text">&ldquo;{post.text}&rdquo;</p>
+        </div>
+      )}
 
       <div className={styles.stage}>
-        {stage === "show" && (
-          <p className={styles.checkingText}>Getting ready…</p>
+        {stage === "drafting" && (
+          <div className="spinner" role="status" aria-label="Generating post" />
         )}
 
         {stage === "checking" && (
           <>
             <div className="spinner" role="status" aria-label="Verifying" />
             <p className={styles.checkingText}>PostGuard is checking…</p>
+          </>
+        )}
+
+        {stage === "error" && (
+          <>
+            <p className={styles.reason}>Couldn't reach the AI service.</p>
+            <p className={styles.checkingText}>{error}</p>
+            <button className="btn primary" onClick={run}>
+              Try again
+            </button>
           </>
         )}
 
@@ -71,7 +103,7 @@ export function DemoScreen({ policyEngine, auditStore, onNavigate }) {
             >
               {result.pass ? "APPROVED" : "BLOCKED"}
             </h2>
-            <p className={styles.reason}>{describeResult(demoPost, result)}</p>
+            <p className={styles.reason}>{describeResult(post, result)}</p>
             <div className={styles.trustBox}>
               This decision is locked with a cryptographic proof. Try to
               change it → can't. It's mathematically sealed.
@@ -82,8 +114,8 @@ export function DemoScreen({ policyEngine, auditStore, onNavigate }) {
 
       {stage === "result" && (
         <div className={styles.navRow}>
-          <button className="btn link" onClick={() => onNavigate("hook")}>
-            ← Back to hook
+          <button className="btn link" onClick={run}>
+            ↻ Generate another
           </button>
           <button className="btn link" onClick={() => onNavigate("proof")}>
             See more examples →

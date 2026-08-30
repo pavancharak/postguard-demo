@@ -1,42 +1,89 @@
-import { proofExamples } from "../exampleData";
+import { useCallback, useEffect, useRef, useState } from "react";
+import { generatePost } from "../lib/generatePostClient";
 import { describeResult } from "../lib/explain";
 import styles from "../styles/Proof.module.css";
 
+const AGENT_SEQUENCE = ["postguard", "contentbot", "postguard", "contentbot"];
+
 export function ProofScreen({ policyEngine, onNavigate }) {
+  const [status, setStatus] = useState("loading"); // loading -> ready -> error
+  const [posts, setPosts] = useState([]);
+  const [error, setError] = useState(null);
+  const runId = useRef(0);
+
+  const run = useCallback(() => {
+    const id = ++runId.current;
+    setStatus("loading");
+    setError(null);
+
+    Promise.all(AGENT_SEQUENCE.map((agentId) => generatePost(agentId)))
+      .then((generated) => {
+        if (id !== runId.current) return;
+        setPosts(generated);
+        setStatus("ready");
+      })
+      .catch((err) => {
+        if (id !== runId.current) return;
+        setError(err.message);
+        setStatus("error");
+      });
+  }, []);
+
+  useEffect(() => {
+    run();
+  }, [run]);
+
   return (
     <div className="page">
       <div className={styles.wrap}>
         <div className={styles.navRow}>
           <button className="btn link" onClick={() => onNavigate("demo")}>
-            ← Back to demo
+            ← Back
           </button>
           <button className="btn link" onClick={() => onNavigate("hook")}>
             Start over ↑
           </button>
         </div>
 
-        <h2 className={styles.title}>It works the same every time</h2>
+        <h2 className={styles.title}>Real examples from AI agents</h2>
 
-        <ul className={styles.exampleList}>
-          {proofExamples.map((post) => {
-            // Real evaluation per example — nothing here is a hardcoded
-            // pass/fail baked into the example data.
-            const result = policyEngine.evaluate(post);
-            return (
-              <li key={post.id} className={styles.exampleCard}>
-                <span className={styles.exampleIcon}>
-                  {result.pass ? "✅" : "❌"}
-                </span>
-                <div className={styles.exampleBody}>
-                  <p className={styles.exampleText}>&ldquo;{post.text}&rdquo;</p>
-                  <p className={styles.exampleReason}>
-                    {describeResult(post, result)}
-                  </p>
-                </div>
-              </li>
-            );
-          })}
-        </ul>
+        {status === "loading" && (
+          <div className="spinner" role="status" aria-label="Generating examples" />
+        )}
+
+        {status === "error" && (
+          <>
+            <p>Couldn't reach the AI service.</p>
+            <p className={styles.exampleReason}>{error}</p>
+            <button className="btn primary" onClick={run}>
+              Try again
+            </button>
+          </>
+        )}
+
+        {status === "ready" && (
+          <ul className={styles.exampleList}>
+            {posts.map((post, i) => {
+              // Real evaluation per example — nothing here is a hardcoded
+              // pass/fail baked into the generated text.
+              const result = policyEngine.evaluate(post);
+              return (
+                <li key={i} className={styles.exampleCard}>
+                  <span className={styles.exampleIcon}>
+                    {result.pass ? "✅" : "❌"}
+                  </span>
+                  <div className={styles.exampleBody}>
+                    <span className="agent-badge">{post.agentName}</span>
+                    <p className={styles.exampleText}>&ldquo;{post.text}&rdquo;</p>
+                    <p className={styles.exampleReason}>
+                      {describeResult(post, result)}
+                    </p>
+                  </div>
+                </li>
+              );
+            })}
+          </ul>
+        )}
 
         <div className={styles.summary}>
           <p className={styles.summaryTitle}>This is how Parmana works:</p>
@@ -45,6 +92,12 @@ export function ProofScreen({ policyEngine, onNavigate }) {
           <p className={styles.summaryLine}>Every violation locked.</p>
           <p className={styles.summaryLine}>No cheating possible.</p>
         </div>
+
+        {status === "ready" && (
+          <button className="btn link" onClick={run}>
+            ↻ Generate new examples
+          </button>
+        )}
 
         <button
           className={`btn primary large ${styles.cta}`}

@@ -50,20 +50,41 @@ to answer one question:
 1. Hook (`src/components/HookScreen.jsx`): "Can AI cheat your policy?" No setup, no
    options, one button forward. This is the value proposition, stated plainly, in the
    first five seconds.
-2. Demo (`src/components/DemoScreen.jsx`): a single AI post ("Just shipped v2.0. This
-   sucks anyway. #startup") runs through the real pipeline in front of you.
-   * `policyEngine.evaluate(post)` runs for real, right here, not upstream
+2. Demo (`src/components/DemoScreen.jsx`): a real AI agent (PostGuard AI) drafts a post
+   live, then it runs through the real pipeline in front of you.
+   * the post text comes from `POST /api/generate-post`, a serverless function
+     (`api/generate-post.js`) that calls a real LLM through the Vercel AI Gateway. Every
+     run is a different post; nothing is canned.
+   * `policyEngine.evaluate(post)` runs for real, client side, on whatever the AI actually
+     wrote, not on a pre-approved script
    * `auditStore.record(decision)` internally calls `sigService.sign(...)` and writes the
      signed record to `localStorage`
-   * the result you see (BLOCKED, with the actual reason) is `policyResult.pass`/
-     `.checks`, translated into plain language by `src/lib/explain.js`, never a hardcoded
-     string per post
-3. Proof (`src/components/ProofScreen.jsx`): four more posts (`src/exampleData.js`), each
-   independently run through `policyEngine.evaluate()` live, mixing approved and blocked
-   outcomes to show the same rules hold up every time, not just for the one demo post.
+   * the result you see (APPROVED or BLOCKED, with the actual reason) is
+     `policyResult.pass`/`.checks`, translated into plain language by `src/lib/explain.js`,
+     never a hardcoded string per post
+3. Proof (`src/components/ProofScreen.jsx`): four more posts, generated live by alternating
+   between two agent personas (`api/_lib/agents.js`), each independently run through
+   `policyEngine.evaluate()`, mixing approved and blocked outcomes to show the same rules
+   hold up every time, not just for the one demo post.
 
 `RULES` (`src/lib/constants.js`) still declares the four checks; `PolicyEngine` still
-enforces them the same way regardless of which screen calls it.
+enforces them the same way regardless of which screen calls it, or whether the text came
+from an LLM or a human.
+
+### The two agents
+
+`api/_lib/agents.js` defines two personas as system instructions, nothing more:
+
+* **PostGuard AI**: instructed to write polished, professional posts, always tag
+  `#startup`, stay short, and skip profanity. Usually comes out APPROVED.
+* **ContentBot AI**: instructed to write casual, unpolished posts and not worry about
+  hashtags, length, or tone. Comes out as a real mix of APPROVED and BLOCKED, because
+  that's genuinely what an unfiltered LLM produces under that instruction, not because
+  a coin flip decided the outcome.
+
+Neither persona is told what PolicyEngine's rules are or told to pass/fail on purpose;
+the pass/fail split is a side effect of the writing style, checked afterwards by the same
+`PolicyEngine` either way.
 
 ## What this enables
 
@@ -106,26 +127,53 @@ script or the console with the module imported) and it reports a signature misma
 because it recomputes the HMAC from scratch rather than trusting a stored flag.
 
 **Why `crypto-js` instead of Node's `crypto`?**
-This demo runs entirely client side (no backend) so it can be a single page hackathon
-walkthrough. Node's `crypto` module doesn't run in the browser; `crypto-js` does the same
-HMAC-SHA256 math and ships to the client safely since it's not a secret itself. The key is.
+The authorize/sign/audit pipeline still runs entirely in the browser, even though post
+generation now goes through a backend (see below). Node's `crypto` module doesn't run in
+the browser; `crypto-js` does the same HMAC-SHA256 math and ships to the client safely
+since it's not a secret itself. The key is.
+
+**Where does the AI generation actually run? Is an API key exposed to the browser?**
+No. `POST /api/generate-post` (`api/generate-post.js`) is a Vercel serverless function;
+the client only ever sends `{ agentId: "postguard" | "contentbot" }` and gets back
+`{ agentName, text, timestamp }`. The system instructions and the `AI_GATEWAY_API_KEY`
+live only in `api/_lib/agents.js` and the function's environment, never in the client
+bundle. `npm run dev` serves the same handler locally through a small Vite dev middleware
+(see `vite.config.js`) so there's exactly one implementation, not a mocked local copy.
+
+**Why does the weekday rule basically never block anything now?**
+`api/_lib/generatePost.js` stamps every generated post with the current time, rolled back
+to the preceding Friday if it's actually a weekend when you run this. Without that, the
+demo's outcome would depend on whether you happen to present on a Saturday: every post
+would get BLOCKED for "posted on weekend" regardless of what the AI wrote, burying the
+profanity/length/hashtag checks the demo exists to show. The weekday rule still runs for
+real on every post; it's just not left to the mercy of the calendar.
 
 **Does this scale past a demo?**
 The three layer split (authorize, sign, audit) is the actual production shape. What
-changes moving to production: `SIGNING_KEY` moves to a backend signer service, `AuditStore`
-moves off `localStorage` onto durable storage, and `PolicyEngine`'s four rules become
-whatever policy set the deployment needs. The interfaces (`evaluate`, `sign`/`verify`,
+changes moving to production: `SIGNING_KEY` moves to a backend signer service (the AI
+generation endpoint already shows what that looks like), `AuditStore` moves off
+`localStorage` onto durable storage, and `PolicyEngine`'s four rules become whatever
+policy set the deployment needs. The interfaces (`evaluate`, `sign`/`verify`,
 `record`/`verify`) don't need to change.
 
 ## Run it
 
 ```bash
 npm install
+cp .env.example .env.local   # then fill in AI_GATEWAY_API_KEY
 npm run dev
 ```
+
+Get an AI Gateway API key from the Vercel dashboard under AI Gateway → API Keys. Without
+it, the Demo and Proof screens show a "Couldn't reach the AI service" error with a retry
+button rather than failing silently or falling back to fake data.
 
 Build for production:
 
 ```bash
 npm run build
 ```
+
+On Vercel, set `AI_GATEWAY_API_KEY` (and optionally `AI_MODEL`) as a project environment
+variable; `api/generate-post.js` picks it up the same way in production as `npm run dev`
+does locally.
