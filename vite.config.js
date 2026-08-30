@@ -27,7 +27,11 @@ export default defineConfig(({ mode }) => {
   // will on Vercel), so we copy them over for `npm run dev`.
   const env = loadEnv(mode, process.cwd(), '')
   for (const [key, value] of Object.entries(env)) {
-    if (process.env[key] === undefined) process.env[key] = value
+    // Trim defensively: the AI SDK does not trim env values itself, so a
+    // stray trailing newline/space from copy-pasting a key into .env.local
+    // would otherwise fail authentication in a way that looks identical to
+    // "wrong key".
+    if (process.env[key] === undefined) process.env[key] = value.trim()
   }
 
   return {

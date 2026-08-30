@@ -30,6 +30,9 @@ export function ProofScreen({ policyEngine, onNavigate }) {
   }, []);
 
   useEffect(() => {
+    // Intentional fetch-on-mount: run() kicks off real network calls to
+    // /api/generate-post, not a synchronous state update.
+    // oxlint-disable-next-line react/set-state-in-effect
     run();
   }, [run]);
 

@@ -1,7 +1,8 @@
 import { generateText } from "ai";
+import { openai } from "@ai-sdk/openai";
 import { AGENTS } from "./agents.js";
 
-const MODEL = process.env.AI_MODEL || "anthropic/claude-haiku-4.5";
+const MODEL = "gpt-4o";
 
 // The AI only controls what the post SAYS, never when it's "posted" — but a
 // raw wall-clock timestamp would mean the weekday rule silently blocks every
@@ -41,6 +42,21 @@ export function sendJson(res, status, body) {
   res.end(JSON.stringify(body));
 }
 
+// Some agents (see agents.js) declare multiple instruction variants instead
+// of one fixed prompt, each with a weight. Picking the variant here (in code)
+// rather than asking the model to self-randomize is deliberate — see the
+// comment on ContentBot in agents.js for why.
+export function pickInstructions(agent) {
+  if (!agent.variants) return agent.instructions;
+  const total = agent.variants.reduce((sum, v) => sum + v.weight, 0);
+  let roll = Math.random() * total;
+  for (const variant of agent.variants) {
+    roll -= variant.weight;
+    if (roll <= 0) return variant.instructions;
+  }
+  return agent.variants[agent.variants.length - 1].instructions;
+}
+
 export async function generatePostHandler(req, res) {
   if (req.method !== "POST") {
     return sendJson(res, 405, { error: "Method not allowed" });
@@ -58,7 +74,7 @@ export async function generatePostHandler(req, res) {
     return sendJson(res, 400, { error: `Unknown agentId: ${body.agentId}` });
   }
 
-  const key = process.env.AI_GATEWAY_API_KEY;
+  const key = process.env.OPENAI_API_KEY;
   console.log(
     `[generate-post] agentId=${body.agentId} model=${MODEL} ` +
       `keyPresent=${Boolean(key)} keyPrefix=${key ? key.slice(0, 8) : "n/a"}`
@@ -66,8 +82,8 @@ export async function generatePostHandler(req, res) {
 
   try {
     const { text } = await generateText({
-      model: MODEL,
-      instructions: agent.instructions,
+      model: openai(MODEL),
+      instructions: pickInstructions(agent),
       prompt: "Write one social post now. Output only the post text.",
       maxOutputTokens: 120,
     });
@@ -80,8 +96,16 @@ export async function generatePostHandler(req, res) {
     });
   } catch (err) {
     console.error("[generate-post] generateText failed:", err);
-    return sendJson(res, 502, {
+    // AI SDK errors (APICallError and friends: auth, invalid request, rate
+    // limit, ...) carry the real statusCode/name/type — surface those
+    // instead of flattening every failure into a generic 502, so the actual
+    // cause (bad key vs bad model id vs rate limited vs network) is visible
+    // without digging through server logs.
+    const status = typeof err?.statusCode === "number" ? err.statusCode : 502;
+    return sendJson(res, status, {
       error: "AI generation failed",
+      name: err?.name,
+      type: err?.type,
       detail: String(err?.message || err),
     });
   }

@@ -53,6 +53,9 @@ export function DemoScreen({ policyEngine, auditStore, onNavigate }) {
   }, [policyEngine, auditStore]);
 
   useEffect(() => {
+    // Intentional fetch-on-mount: run() kicks off the real network call to
+    // /api/generate-post, not a synchronous state update.
+    // oxlint-disable-next-line react/set-state-in-effect
     run();
   }, [run]);
 

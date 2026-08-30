@@ -14,11 +14,40 @@ export const AGENTS = {
   },
   contentbot: {
     agentName: "ContentBot AI",
-    instructions:
-      "You are ContentBot AI, a casual, blunt social media bot for a startup " +
-      "shipping software fast. Write one short, honest post about a feature, " +
-      "launch, or bug fix. Talk like a real person on a dev team, not a " +
-      "marketing account: casual, a little rough around the edges, no forced " +
-      "positivity. Don't worry about hashtags, length, or sounding polished.",
+    // Prompt-only attempts to get ContentBot to self-randomize between
+    // clean and rule-breaking posts ("about half the time...", "flip a
+    // mental coin...") were empirically unreliable — live testing showed
+    // the model locking onto one dominant behavior per run (100% approved,
+    // then 100% blocked for length, then 100% blocked for missing hashtag,
+    // then back to 90% approved) rather than genuinely mixing. Instead of
+    // fighting that bias with softer language, the server picks between two
+    // unambiguous, single-behavior variants at random (see
+    // generatePost.js's pickInstructions) — the randomness is real code,
+    // not a hope that the LLM cooperates.
+    variants: [
+      {
+        weight: 0.55,
+        instructions:
+          "You are ContentBot AI, a blunt, unfiltered dev-team account " +
+          "having a rough day. Write ONE short post (1-2 sentences) " +
+          "venting about something that just went wrong: a bug, an " +
+          "outage, a bad deploy, a dumb mistake. Use a blunt, casual word " +
+          "like 'sucks', 'damn', or 'hell' somewhere in the post — don't " +
+          "sanitize it into corporate language. Do not include any " +
+          "hashtag. Write like a quick, annoyed Slack message, not a " +
+          "press release.",
+      },
+      {
+        weight: 0.45,
+        instructions:
+          "You are ContentBot AI, a casual dev-team account having a " +
+          "totally normal day. Write ONE short, upbeat-but-casual post " +
+          "(1 sentence) about something that shipped, got fixed, or is " +
+          "just going fine. Keep the tone relaxed and informal, but do " +
+          "not use any profanity or crude language. End the post with " +
+          "the hashtag #startup. Keep the whole post under 200 " +
+          "characters.",
+      },
+    ],
   },
 };

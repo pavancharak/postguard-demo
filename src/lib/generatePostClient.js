@@ -9,7 +9,10 @@ export async function generatePost(agentId) {
   });
   const data = await res.json();
   if (!res.ok) {
-    throw new Error(data.error || "AI generation failed");
+    // Surface the real cause (e.g. "AI Gateway authentication failed:
+    // Invalid API key") instead of the generic top-level error string, so
+    // the UI's error state is actually diagnostic.
+    throw new Error(data.detail || data.error || "AI generation failed");
   }
   return data; // { agentId, agentName, text, timestamp }
 }
