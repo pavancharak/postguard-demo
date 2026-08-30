@@ -13,7 +13,6 @@ import "./styles/app.css";
 function App() {
   const [screen, setScreen] = useState("home");
   const [selectedPost, setSelectedPost] = useState(null);
-  const [verifiedIds, setVerifiedIds] = useState(new Set());
   // Bumping this forces AuditTrailScreen (and Home's stats) to re-read
   // AuditStore.getAll() after a new record is written.
   const [, forceRefresh] = useState(0);
@@ -35,8 +34,7 @@ function App() {
     setScreen("receipt");
   };
 
-  const handleRecorded = (postId, auditId) => {
-    setVerifiedIds((prev) => new Set(prev).add(postId));
+  const handleRecorded = () => {
     forceRefresh((n) => n + 1);
   };
 
@@ -48,7 +46,6 @@ function App() {
 
       {screen === "drafts" && (
         <DraftsScreen
-          verifiedIds={verifiedIds}
           onNavigate={setScreen}
           onSelectPost={handleSelectPost}
         />
@@ -57,7 +54,6 @@ function App() {
       {screen === "verify" && selectedPost && (
         <VerificationScreen
           post={selectedPost}
-          onBack={() => setScreen("drafts")}
           onRunVerification={handleRunVerification}
         />
       )}
