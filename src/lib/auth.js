@@ -36,9 +36,10 @@ export class PolicyEngine {
     }
 
     // Rule 2: No profanity
-    const hasProfanity = PROFANITY_PATTERN.test(post.text);
-    results.checks.profanity = !hasProfanity;
-    if (hasProfanity) {
+    const profanityMatch = post.text.match(PROFANITY_PATTERN);
+    results.checks.profanity = !profanityMatch;
+    results.matchedProfanity = profanityMatch ? profanityMatch[0] : null;
+    if (profanityMatch) {
       results.pass = false;
       results.failures.push("Contains profanity");
     }

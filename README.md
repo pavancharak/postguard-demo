@@ -44,26 +44,26 @@ opaque "approve" function.
 
 ## How it works
 
-Follow one post end to end:
+The app is a 3 screen narrative rather than a browse and verify tool. Each screen exists
+to answer one question:
 
-1. Drafts: a raw, unverified post from an AI agent (see `src/data.js`; no pass/fail baked
-   in, on purpose).
-2. Verify: shows the four rules about to be checked (`RULES` in `src/lib/constants.js`).
-3. Receipt (`src/components/ReceiptScreen.jsx`): on mount, it
-   * calls `policyEngine.evaluate(post)` for real rule evaluation, happening here, not upstream
-   * builds a decision object and calls `auditStore.record(decision)`, which internally
-     calls `sigService.sign(...)` and writes the signed record to `localStorage`
-   * renders the real `pass`/`failures` from that evaluation, plus the first 16 hex
-     characters of the signature
-4. Try to Override: this button doesn't fake a rejection message. It calls
-   `auditStore.tamper(id, { policyResult: { pass: true } })`, which directly mutates the
-   stored record the way a raw database edit would (bypassing `SignatureService`
-   entirely), then calls `auditStore.verify(id)`, which recomputes the HMAC over the
-   now mutated record and compares it to the signature computed before the edit.
-   Mismatch means "Tampering detected." That's a computed result, not a string someone
-   typed into the button handler.
-5. Audit Trail: every signed decision this session, each independently re-verifiable
-   with its own "Verify" button, calling the same recompute and compare logic.
+1. Hook (`src/components/HookScreen.jsx`): "Can AI cheat your policy?" No setup, no
+   options, one button forward. This is the value proposition, stated plainly, in the
+   first five seconds.
+2. Demo (`src/components/DemoScreen.jsx`): a single AI post ("Just shipped v2.0. This
+   sucks anyway. #startup") runs through the real pipeline in front of you.
+   * `policyEngine.evaluate(post)` runs for real, right here, not upstream
+   * `auditStore.record(decision)` internally calls `sigService.sign(...)` and writes the
+     signed record to `localStorage`
+   * the result you see (BLOCKED, with the actual reason) is `policyResult.pass`/
+     `.checks`, translated into plain language by `src/lib/explain.js`, never a hardcoded
+     string per post
+3. Proof (`src/components/ProofScreen.jsx`): four more posts (`src/exampleData.js`), each
+   independently run through `policyEngine.evaluate()` live, mixing approved and blocked
+   outcomes to show the same rules hold up every time, not just for the one demo post.
+
+`RULES` (`src/lib/constants.js`) still declares the four checks; `PolicyEngine` still
+enforces them the same way regardless of which screen calls it.
 
 ## What this enables
 
@@ -71,8 +71,10 @@ Follow one post end to end:
   so "why was this blocked" always has a real answer (`failures[]`).
 * Non repudiable decisions: once signed, a decision can't be silently changed without
   the signature breaking, a stronger guarantee than an audit log that just trusts its own rows.
-* A visible attack: most demos assert trust; this one lets you break it (edit
-  `localStorage` yourself, or click "Try to Override") and watch the system catch it.
+* A real, checkable claim: the Demo screen states plainly that the decision is
+  cryptographically sealed. That claim is backed by working code in `src/lib/audit.js`,
+  not asserted for effect. See the `localStorage` question below for how to check it
+  yourself.
 * A pattern that generalizes: swap `PolicyEngine`'s rules for anything (spend limits,
   content policy, code deploy gates) and the sign/audit machinery underneath doesn't change.
 
@@ -93,11 +95,15 @@ at the module level: only `src/lib/crypto.js` performs signing operations with t
 though `src/App.jsx` does need to read it once to construct the shared `SignatureService`
 instance at startup.
 
-**What happens if I edit `localStorage` by hand?**
-Try it. Open DevTools, go to Application then Local Storage then `audit_trail`, change any
-field in a record, then hit "Verify" on that record in the Audit Trail screen. It will
-report a signature mismatch. This is the same code path "Try to Override" uses, just
-triggered manually instead of through the UI button.
+**What happens if I edit `localStorage` by hand? There's no "Verify" button anymore.**
+The 3 screen narrative intentionally states the tamper guarantee as plain text instead of
+hiding it behind a click, so there's no UI button that re-runs `verify()` on demand
+anymore. The underlying code is still real and unchanged: open DevTools, go to
+Application then Local Storage then `audit_trail`, and you'll see the actual signed
+records `auditStore.record()` wrote. Edit any field and call
+`auditStore.verify(id)` from `src/lib/audit.js` against it (for example, from a quick
+script or the console with the module imported) and it reports a signature mismatch,
+because it recomputes the HMAC from scratch rather than trusting a stored flag.
 
 **Why `crypto-js` instead of Node's `crypto`?**
 This demo runs entirely client side (no backend) so it can be a single page hackathon
